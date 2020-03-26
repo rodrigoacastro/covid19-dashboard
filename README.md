@@ -4,7 +4,8 @@
 
 This project is built with Streamlit for visualization and gets data by a web scrapping. Therefore, the data is actualized on a hourly basis (aproximately).
 
-![image](./images/app.PNG)
+![image](./images/app1.PNG)
+![image](./images/app2.PNG)
 
 ### Development Enviroment
 
