@@ -3,15 +3,17 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import re
-import warnings
-warnings.filterwarnings("ignore")
+import os
 
 class DataFetcher:
     def __init__(self):
         options = webdriver.ChromeOptions()
-        options.add_argument('headless')
+        options.binary_location = os.environ.get("GOOGLE_CHROME_BINARY")
+        options.add_argument('--headless')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--no-sandbox')
 
-        self.driver = webdriver.Chrome(chrome_options=options)
+        self.driver = webdriver.Chrome(executable_path=os.environ.get("CHROMEDRIVER_PATH"), chrome_options=options)
         self.driver.get('https://especiais.g1.globo.com/bemestar/coronavirus/mapa-coronavirus/')
         self.driver.implicitly_wait(5)
 
@@ -61,7 +63,6 @@ class DataFetcher:
     def get_predictions(self):
 
         # Fitting log curve
-
         x = np.arange(10)
         y = self.cases_last_10days['log_cumsum']
 
