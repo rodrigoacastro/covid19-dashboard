@@ -8,7 +8,7 @@ from PIL import Image
 from scrapping import DataFetcher
 from seir import SeirModel
 
-corona = Image.open('images/title_logo.PNG')
+corona = Image.open('images/title_logo.png')
 
 st.image(corona) 
 
@@ -142,7 +142,7 @@ if choice == 'Previsões':
         A ideia básica é que, quando uma doença é introduzida em uma população, as pessoas se movem de um estágio do modelo para o outro. Ou seja, as pessoas suscetíveis podem se expor ao vírus, contraí-lo e eventualmente se recuperar ou padecer.
         ''')
         
-        seir_image = Image.open('images/seir.PNG')
+        seir_image = Image.open('images/seir.png')
         st.image(seir_image, use_column_width=True)
 
         st.write(
