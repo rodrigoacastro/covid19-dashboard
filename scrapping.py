@@ -9,13 +9,13 @@ import os
 class DataFetcher:
     def __init__(self):
         options = webdriver.ChromeOptions()
-        # options.binary_location = os.environ.get("GOOGLE_CHROME_BINARY")
+        options.binary_location = os.environ.get("GOOGLE_CHROME_BINARY")
         options.add_argument('--headless')
-        # options.add_argument('--disable-dev-shm-usage')
-        # options.add_argument('--no-sandbox')
-        # executable_path=os.environ.get("CHROMEDRIVER_PATH")
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--no-sandbox')
+        executable_path=os.environ.get("CHROMEDRIVER_PATH")
 
-        self.driver = webdriver.Chrome(chrome_options=options)
+        self.driver = webdriver.Chrome(executable_path=os.environ.get("CHROMEDRIVER_PATH"), chrome_options=options)
         self.driver.get('https://especiais.g1.globo.com/bemestar/coronavirus/mapa-coronavirus/')
         self.driver.implicitly_wait(5)
 
