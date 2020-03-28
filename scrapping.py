@@ -2,18 +2,20 @@ from selenium import webdriver
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from sklearn.metrics import r2_score
 import re
 import os
 
 class DataFetcher:
     def __init__(self):
         options = webdriver.ChromeOptions()
-        options.binary_location = os.environ.get("GOOGLE_CHROME_BINARY")
+        # options.binary_location = os.environ.get("GOOGLE_CHROME_BINARY")
         options.add_argument('--headless')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--no-sandbox')
+        # options.add_argument('--disable-dev-shm-usage')
+        # options.add_argument('--no-sandbox')
+        # executable_path=os.environ.get("CHROMEDRIVER_PATH")
 
-        self.driver = webdriver.Chrome(executable_path=os.environ.get("CHROMEDRIVER_PATH"), chrome_options=options)
+        self.driver = webdriver.Chrome(chrome_options=options)
         self.driver.get('https://especiais.g1.globo.com/bemestar/coronavirus/mapa-coronavirus/')
         self.driver.implicitly_wait(5)
 
@@ -26,7 +28,6 @@ class DataFetcher:
 
         #Cases per day and last 10 days
         self.cases_per_day = self.get_cases_per_day()
-        self.cases_last_10days = self.cases_per_day.iloc[-11:-1]
 
         # Predictions
         self.predictions = self.get_predictions()
@@ -62,22 +63,26 @@ class DataFetcher:
 
     def get_predictions(self):
 
+        cases_last_21days = self.cases_per_day.iloc[-21:-1]
         # Fitting log curve
-        x = np.arange(10)
-        y = self.cases_last_10days['log_cumsum']
+        x = np.arange(20)
+        y = cases_last_21days['log_cumsum']
 
         fitted_params = np.polyfit(x, y, 1)
 
-        predictions_log = [day*fitted_params[0] + fitted_params[1] for day in np.arange(18)]
+        predictions_log = [day*fitted_params[0] + fitted_params[1] for day in np.arange(27)]
 
         # Generating timeseries for 7 days ahed, and appending with the prediction time
-        days_7_days_ahed = pd.date_range(self.cases_per_day.date[0], self.cases_per_day.date[0] + pd.Timedelta(7, unit='D'))
-        days_pred = self.cases_per_day['date'][-11:-1].append(pd.Series(days_7_days_ahed))
+        days_7_days_ahed = pd.date_range(cases_last_21days['date'].values[-1], cases_last_21days['date'].values[-1] + pd.Timedelta(7, unit='D'))
+        days_pred = cases_last_21days['date'][-21:-1].append(pd.Series(days_7_days_ahed))
 
         # DataFrame with predictions
         prediction_df = pd.DataFrame({'date': days_pred, 'pred_cases': np.exp(predictions_log)})
 
-        return prediction_df
+        # Calculate coefficient of determination of fitting
+        r2 = np.round(r2_score(cases_last_21days['log_cumsum'], predictions_log[:20]), 3)
+
+        return cases_last_21days, prediction_df, r2
 
     def get_update_time(self):
         update_time = [element.text for element in self.driver.find_elements_by_class_name('update__text')][0]

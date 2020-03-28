@@ -4,8 +4,7 @@
 
 This project is built with Streamlit for visualization and gets data by a web scrapping. Therefore, the data is actualized on a hourly basis (aproximately).
 
-![image](./images/app1.PNG)
-![image](./images/app2.PNG)
+The project is currently running on: http://coronavirus-brasil.herokuapp.com/
 
 ### Development Enviroment
 
