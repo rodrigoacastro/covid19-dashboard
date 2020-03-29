@@ -2,7 +2,7 @@ from selenium import webdriver
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from sklearn.metrics import r2_score
+from datetime import datetime
 import re
 import os
 
@@ -13,78 +13,80 @@ class DataFetcher:
         options.add_argument('--headless')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--no-sandbox')
-        executable_path=os.environ.get("CHROMEDRIVER_PATH")
+        #executable_path=os.environ.get("CHROMEDRIVER_PATH")
 
         self.driver = webdriver.Chrome(executable_path=os.environ.get("CHROMEDRIVER_PATH"), chrome_options=options)
-        self.driver.get('https://especiais.g1.globo.com/bemestar/coronavirus/mapa-coronavirus/')
-        self.driver.implicitly_wait(5)
 
-        #Total cases
-        self.total_cases = [element.text for element in self.driver.find_elements_by_class_name('cases-overview__total')][0]
+    def get_count_numbers(self):
+        self.driver.get('https://www.worldometers.info/coronavirus/country/brazil/')
+        count_numbers = self.driver.find_elements_by_xpath('//*[@id="maincounter-wrap"]/div')
+        main_counters = [element.text for element in count_numbers]
+        total_cases = main_counters[0]
+        total_deaths = main_counters[1]
+        total_recovers = main_counters[2]
+        
+        return total_cases, total_deaths, total_recovers
 
-        # Cases in time
-        self.cases_date = self.driver.find_elements_by_class_name('cases-by-day__date')
-        self.cases_number = self.driver.find_elements_by_class_name('cases-by-day__total')
+    def get_daily_cases(self):
+        self.driver.get('https://www.worldometers.info/coronavirus/country/brazil/')
+        self.driver.implicitly_wait(3)
+        script = self.driver.find_element_by_xpath('/html/body/div[4]/div[2]/div[1]/div[2]/div/script')
+        text = script.get_attribute('text')
+        
+        pattern_categories = r'(categories: \[.*\])'
+        pattern_days = r'(\".*\")'
+        pattern_data = r'(data: \[.*\])'
 
-        #Cases per day and last 10 days
-        self.cases_per_day = self.get_cases_per_day()
+        days_list = re.findall(pattern_categories, text)[0]
+        days = re.findall(pattern_days, days_list)
 
-        # Predictions
-        self.predictions = self.get_predictions()
+        date_list = days[0].split(",")
+        
+        data = re.findall(pattern_data, text)[0]
 
+        list_daily_cases = data[7:][:-11].split(",")
+        df_daily = pd.DataFrame({'date': date_list, 'cases': list_daily_cases})
+        df_daily = df_daily.applymap(lambda x: x.replace('"', ''))
+        df_daily['cases'] = df_daily['cases'].replace('null', 0)
+        df_daily['cases'] = df_daily['cases'].astype('int64')
+        if 'Feb 29' in df_daily['date'].values:
+            df_daily = df_daily[df_daily['date'] != 'Feb 29']
+        df_daily['datetime_obj'] = [datetime.strptime(x, '%b %d').replace(year=2020) for x in df_daily['date']]
+        
+        return df_daily
 
-    def get_cases_per_day(self):
-        cases_date_list = []
-        cases_total_list = []
+    def get_total_cases(self):
+        self.driver.get('https://www.worldometers.info/coronavirus/country/brazil/')
+        self.driver.implicitly_wait(3)
+        script_total = self.driver.find_element_by_xpath('/html/body/div[4]/div[2]/div[1]/div[1]/div/script')
+        text = script_total.get_attribute('text')
+        
+        pattern_categories = '(categories: \[.*\])'
+        pattern_days = r'(\".*\")'
+        pattern_data = r'(data: \[.*\])'
+        
+        days_list = re.findall(pattern_categories, text)[0]
+        days = re.findall(pattern_days, days_list)
+        date_list = days[0].split(",")
+        
+        data = re.findall(pattern_data, text)[0]
 
-        for element in self.cases_date:
-            cases_date_list.append(element.text)
-            
-        for element in self.cases_number:
-            cases_total_list.append(element.text)
-
-        # Loading the lists into a dataframe
-        cases_per_day = pd.DataFrame({'date': cases_date_list, 'no_cases': cases_total_list})
-
-        # Data transformation
-        cases_per_day.drop(cases_per_day.tail(2).index, inplace=True)
-        cases_per_day['date'] = cases_per_day['date'] + '/2020'
-        cases_per_day['date'] = pd.to_datetime(cases_per_day['date'], format='%d/%m/%Y')
-        cases_per_day['no_cases'] = cases_per_day['no_cases'].astype('int64')
-
-        cases_per_day.sort_values(by='date', ascending=True, inplace=True)
-
-        # Create cumulative sum of number of cases
-
-        cases_per_day['cases_cumsum'] = cases_per_day['no_cases'].cumsum()
-        cases_per_day['log_cumsum'] = np.log(cases_per_day['cases_cumsum'])
-
-        return cases_per_day
-
-    def get_predictions(self):
-
-        cases_last_21days = self.cases_per_day.iloc[-21:-1]
-        # Fitting log curve
-        x = np.arange(20)
-        y = cases_last_21days['log_cumsum']
-
-        fitted_params = np.polyfit(x, y, 1)
-
-        predictions_log = [day*fitted_params[0] + fitted_params[1] for day in np.arange(27)]
-
-        # Generating timeseries for 7 days ahed, and appending with the prediction time
-        days_7_days_ahed = pd.date_range(cases_last_21days['date'].values[-1], cases_last_21days['date'].values[-1] + pd.Timedelta(7, unit='D'))
-        days_pred = cases_last_21days['date'][-21:-1].append(pd.Series(days_7_days_ahed))
-
-        # DataFrame with predictions
-        prediction_df = pd.DataFrame({'date': days_pred, 'pred_cases': np.exp(predictions_log)})
-
-        # Calculate coefficient of determination of fitting
-        r2 = np.round(r2_score(cases_last_21days['log_cumsum'], predictions_log[:20]), 3)
-
-        return cases_last_21days, prediction_df, r2
+        list_total_cases = data[7:][:-11].split(",")
+        
+        df_totalcases = pd.DataFrame({'date': date_list, 'cases': list_total_cases})
+        df_totalcases = df_totalcases.applymap(lambda x: x.replace('"', ''))
+        df_totalcases['cases'] = df_totalcases['cases'].astype('int64')
+        
+        # Drop Feb 29 to avoid bug on converting to datetime object
+        if 'Feb 29' in df_totalcases['date'].values:
+            df_totalcases = df_totalcases[df_totalcases['date'] != 'Feb 29']
+        df_totalcases['datetime_obj'] = [datetime.strptime(x, '%b %d').replace(year=2020) for x in df_totalcases['date']]
+        
+        return df_totalcases
 
     def get_update_time(self):
+        self.driver.get('https://especiais.g1.globo.com/bemestar/coronavirus/mapa-coronavirus/')
+        self.driver.implicitly_wait(5)
         update_time = [element.text for element in self.driver.find_elements_by_class_name('update__text')][0]
         pattern_date = r'(\d+/\d+/\d+)'
         pattern_time = r'(\d+:\d+)'
@@ -95,6 +97,8 @@ class DataFetcher:
         return date[0], time[0]
 
     def get_cases_by_city(self):
+        self.driver.get('https://especiais.g1.globo.com/bemestar/coronavirus/mapa-coronavirus/')
+        self.driver.implicitly_wait(5)
         places = [element.text for element in self.driver.find_elements_by_class_name('places__cell')][2::]
         locations = places[0::2]
         no_of_cases = places[1::2]
@@ -159,7 +163,7 @@ class DataFetcher:
 
         fig = go.Figure(go.Scattermapbox(lat=coord_states_cases['lat'], lon=coord_states_cases['long'],
                                          mode='markers', 
-                                         marker=go.scattermapbox.Marker(size=coord_states_cases['Casos']/8), 
+                                         marker=go.scattermapbox.Marker(size=coord_states_cases['Casos']/10), 
                                          text=coord_states_cases['hover_text'], 
                                          hoverinfo='text')
                                          )

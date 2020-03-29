@@ -7,16 +7,18 @@ import matplotlib.dates as mdates
 from PIL import Image
 from scrapping import DataFetcher
 from seir import SeirModel
+from models import Models
 
 corona = Image.open('images/title_logo.png')
 
 st.image(corona) 
 
 st.write('Bem-vindo ao dashboard de acompanhamento de casos do Coronavírus no Brasil.')
-st.write('Os dados apresentados aqui são coletados a partir de um webscrapping de um site do G1 sobre o assunto.\
-          A escolha da fonte foi feita visando a confiabilidade da informação.')
+st.write('Os dados apresentados aqui são coletados a partir de um webscrapping de fontes confiáveis. A atualização dos dados acontece várias vezes ao dia. Apenas números confirmados são apresentados.')
 
 st.write('Utilize o menu ao lado para fazer a navegação.')
+
+st.write('A maioria dos gráficos apresentados aqui são interativos: mostram valores ao passar do mouse, permitem zoom e posição de tela cheia. Explore os dados com o mouse!')
 
 st.sidebar.title('Navegação')
 actions = ['Situação atual', 'Previsões']
@@ -35,12 +37,15 @@ st.write('<i>Dados atualizados em </i>', date, ' <i>às</i> ', time, unsafe_allo
 st.write('________________________________')
 
 if choice == 'Situação atual':
+    total_cases, deaths, recovers = webscrapping.get_count_numbers()
 
-    st.write('<b>Casos totais até o momento: </b>', webscrapping.total_cases, unsafe_allow_html=True)
+    st.write('<b>Casos totais até o momento: </b>', total_cases, unsafe_allow_html=True)
+    st.write('<b>Mortes confirmadas: </b>', deaths, unsafe_allow_html=True)
+    st.write('<b>Pessoas recuperadas: </b>', recovers, unsafe_allow_html=True)
 
-    cases_df = webscrapping.cases_per_day
+    daily_cases_df = webscrapping.get_daily_cases()
 
-    fig_daily_cases = go.Figure(data=go.Bar(x=cases_df['date'], y=cases_df['no_cases']))
+    fig_daily_cases = go.Figure(data=go.Bar(x=daily_cases_df['datetime_obj'], y=daily_cases_df['cases']))
 
     fig_daily_cases.update_layout(title={'text':'<b>Novos casos por dia</b>', 'x': 0.5, 'xanchor': 'center', 'yanchor': 'top'},
                                 yaxis_title='Novos casos confirmados',
@@ -48,7 +53,9 @@ if choice == 'Situação atual':
 
     st.plotly_chart(fig_daily_cases, use_container_width=True)
 
-    fig_cumulative_cases = go.Figure(data=go.Scatter(x=cases_df['date'], y=cases_df['cases_cumsum'], 
+    total_cases_df = webscrapping.get_total_cases()
+
+    fig_cumulative_cases = go.Figure(data=go.Scatter(x=total_cases_df['datetime_obj'], y=total_cases_df['cases'], 
                                     line=dict(color='firebrick', width=4), 
                                     mode='lines+markers', marker=dict(size=10)))
 
@@ -95,45 +102,62 @@ if choice == 'Previsões':
         st.write('O modelo exponencial é indicado para modelar a epidemia nos seus estágios iniciais.')
         st.write('Contudo, a análise da adequação da curva de casos ao modelo exponencial nos informa a respeito das medidas de contenção que estão sendo adotadas.')
         st.write('Caso o ajuste ao modelo não seja satisfatório, significa que as medidas de contenção estão surtindo efeito em freiar a epidemia que, caso as medidas de contenção fossem inexistentes, teria seu número casos acompanhando a curva exponencial.')
+        st.write('Clique em "*compare data on hover*" para comparar a previsão e o real para cada dia.')
 
-        cases_last_21days, predictions, r2 = webscrapping.get_predictions()
-        cases_df = webscrapping.cases_per_day
+        expo_model = Models()
+        cases_last_20days, predictions, r2 = expo_model.get_exponential_predictions()
+        cases_df = webscrapping.get_total_cases()
 
         # Quality of last 10 days fitting to exponential model plot
         fig_quality = go.Figure()
-        fig_quality.add_trace(go.Scatter(x=cases_last_21days['date'], y=cases_last_21days['log_cumsum'], line=dict(color='firebrick', width=4),
+        fig_quality.add_trace(go.Scatter(x=cases_last_20days['datetime_obj'], y=cases_last_20days['log_cases'], line=dict(color='firebrick', width=4),
                         mode='lines+markers', marker=dict(size=10), name='Real'))
-        fig_quality.add_trace(go.Scatter(x=cases_last_21days['date'], y=np.log(predictions['pred_cases']), name='Ajustado'))
+        fig_quality.add_trace(go.Scatter(x=cases_last_20days['datetime_obj'], y=np.log(predictions['pred_cases']), name='Ajustado'))
 
-        fig_quality.add_annotation(x=cases_last_21days['date'][17], y=cases_last_21days['log_cumsum'][5], text='R² = {}'.format(r2))
-
-        fig_quality.update_annotations(dict(xref="x", yref="y", showarrow=False))
-
-        fig_quality.update_layout(title='<b>Qualidade do ajuste exponencial em janela de 20 dias</b>',
-                                  yaxis_title='log (casos totais)')
+        fig_quality.update_layout(title={'text': '<b>Qualidade do ajuste exponencial em janela de 20 dias</b><br>(R² = {})'.format(r2), 'x': 0.5, 'xanchor': 'center'},
+                                  yaxis_title='log (casos totais)', legend=dict(x=.1, y=0.9))
 
         st.plotly_chart(fig_quality, use_container_width=True)
 
         # Number of cases with predictions plot 
         fig_pred = go.Figure()
-        fig_pred.add_trace(go.Scatter(x=cases_df['date'], y=cases_df['cases_cumsum'], line=dict(color='#7f7f7f', width=4),
+        fig_pred.add_trace(go.Scatter(x=cases_df['datetime_obj'], y=cases_df['cases'], line=dict(color='#7f7f7f', width=4),
                         mode='lines+markers', marker=dict(size=10), name='Dados'))
         fig_pred.add_trace(go.Scatter(x=predictions['date'], y=predictions['pred_cases'], name='Ajuste', line=dict(color='red')))
 
-        fig_pred.update_layout(title='<b>Ajsute exponencial com previsão para os próximos 7 dias</b>',
-                               yaxis_title='Casos totais')
+        fig_pred.update_layout(title={'text':'<b>Ajuste exponencial com previsão para os próximos 7 dias</b>', 'x': 0.5, 'xanchor': 'center'},
+                               yaxis_title='Casos totais', legend=dict(x=.1, y=0.9))
 
         st.plotly_chart(fig_pred, use_container_width=True)
 
         st.markdown('## Modelo Polinomial')
 
-        st.write('Em desenvolvimento...')
+        st.write('''
+        O modelo polinomial não força a curva a um ajuste exponencial. Portanto, tem a característica de proporcionar um ajuste mais "suave",
+        capaz de captar as tendências mais recentes. Para este ajuste, está sendo utilizado um modelo polinomial de terceiro grau.
+        Clique em "*compare data on hover*" para comparar a previsão e o real para cada dia.
+        ''')
+
+        polinomial_predictions = expo_model.get_polinomial_predictions()
+
+        fig_pred_poli = go.Figure()
+        fig_pred_poli.add_trace(go.Scatter(x=cases_df['datetime_obj'], y=cases_df['cases'], line=dict(color='#7f7f7f', width=4),
+                        mode='lines+markers', marker=dict(size=10), name='Dados'))
+        fig_pred_poli.add_trace(go.Scatter(x=polinomial_predictions['date'], y=polinomial_predictions['pred_cases'], name='Ajuste', line=dict(color='green')))
+
+        fig_pred_poli.update_layout(title={'text':'<b>Ajuste polinomial com previsão para os próximos 7 dias</b>', 'x': 0.5, 'xanchor': 'center'},
+                               yaxis_title='Casos totais', legend=dict(x=.1, y=0.9))
+
+        st.plotly_chart(fig_pred_poli, use_container_width=True)
+
+
     
     if model == 'Rede Neural Artificial':
         st.markdown('## Rede Neural Artificial')
         st.write('Em desenvolvimento...')
 
     if model == 'SEIR (Simulação)':
+        total_cases, deaths, recovers = webscrapping.get_count_numbers()
         st.markdown('## Modelo SEIR')
         st.write(
         '''
@@ -174,7 +198,8 @@ if choice == 'Previsões':
 
         A seguir é possível verificar os resultados da simulação para o cenário brasileiro, partindo de hoje e considerando os números mais recentes. 
         ''')
-        seir_model = SeirModel(100, int(webscrapping.total_cases.replace('.', '')), 1)
+        seir_model = SeirModel(100, int(total_cases.replace(',', '')), 
+                               recovered=(int(deaths.replace(',','')) + int(recovers.replace(',',''))), p=1)
         S, E, I, R = seir_model.get_model_results()
         population = seir_model.N
         
@@ -221,7 +246,8 @@ if choice == 'Previsões':
         ''')
 
         p = st.slider(label='Selecione o valor de p', min_value=0.5, max_value=1.0, value=1.0, step=0.01)
-        seir_model_varying = SeirModel(250, int(webscrapping.total_cases.replace('.', '')), p)
+        seir_model_varying = SeirModel(250, int(total_cases.replace(',', '')), 
+                                       recovered=(int(deaths.replace(',','')) + int(recovers.replace(',',''))), p=p)
         S, E, I, R = seir_model_varying.get_model_results()
 
         # Prepare dates for plotting

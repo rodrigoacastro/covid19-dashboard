@@ -1,7 +1,7 @@
 import numpy as np
 
 class SeirModel:
-    def __init__(self, t_max, infected, p):
+    def __init__(self, t_max, infected, recovered, p):
         # Initial params for model calculation
         self.p = p
         self.t_max = t_max
@@ -10,7 +10,8 @@ class SeirModel:
         self.N = 200000000
         self.infected = infected
         self.exposed = (self.infected*15)
-        self.init_vals = 1 - self.exposed/self.N, self.exposed/self.N, self.infected/self.N, 0
+        self.recovered = recovered
+        self.init_vals = 1 - self.exposed/self.N, self.exposed/self.N, self.infected/self.N, self.recovered/self.N
         alpha = 0.2
         beta = 1.2 * self.p
         gamma = 0.5
