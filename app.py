@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from PIL import Image
 from scrapping import DataFetcher
-from seir import SeirModel
 from models import Models
+from seir import SeirModel
 
 corona = Image.open('images/title_logo.png')
 
@@ -27,16 +27,14 @@ choice = st.sidebar.selectbox('Selecione uma opção', actions)
 with st.spinner('Buscando dados...'):
     webscrapping = DataFetcher()
 
-date, time = webscrapping.get_update_time()
-
-st.text('')
-st.text('')
-
-st.write('<i>Dados atualizados em </i>', date, ' <i>às</i> ', time, unsafe_allow_html=True)
-
 st.write('________________________________')
 
 if choice == 'Situação atual':
+    date, time = webscrapping.get_update_time()
+    st.write('<i>Dados atualizados em </i>', date, ' <i>às</i> ', time, unsafe_allow_html=True)
+    st.text('')
+    st.text('')
+
     total_cases, deaths, recovers = webscrapping.get_count_numbers()
 
     st.write('<b>Casos totais até o momento: </b>', total_cases, unsafe_allow_html=True)
@@ -65,7 +63,8 @@ if choice == 'Situação atual':
 
     st.plotly_chart(fig_cumulative_cases, use_container_width=True)
 
-    cases_by_city = webscrapping.get_cases_by_city()
+    with st.spinner('Buscando casos por localidade...'):
+        cases_by_city = webscrapping.get_cases_by_city()
 
     st.text('')
     st.header('Distribuição de casos por localidade')
@@ -104,8 +103,8 @@ if choice == 'Previsões':
         st.write('Caso o ajuste ao modelo não seja satisfatório, significa que as medidas de contenção estão surtindo efeito em freiar a epidemia que, caso as medidas de contenção fossem inexistentes, teria seu número casos acompanhando a curva exponencial.')
         st.write('Clique em "*compare data on hover*" para comparar a previsão e o real para cada dia.')
 
-        expo_model = Models()
-        cases_last_20days, predictions, r2 = expo_model.get_exponential_predictions()
+        model = Models()
+        cases_last_20days, predictions, r2 = model.get_exponential_predictions()
         cases_df = webscrapping.get_total_cases()
 
         # Quality of last 10 days fitting to exponential model plot
@@ -138,7 +137,7 @@ if choice == 'Previsões':
         Clique em "*compare data on hover*" para comparar a previsão e o real para cada dia.
         ''')
 
-        polinomial_predictions = expo_model.get_polinomial_predictions()
+        polinomial_predictions = model.get_polinomial_predictions()
 
         fig_pred_poli = go.Figure()
         fig_pred_poli.add_trace(go.Scatter(x=cases_df['datetime_obj'], y=cases_df['cases'], line=dict(color='#7f7f7f', width=4),

@@ -1,25 +1,39 @@
 from selenium import webdriver
+import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from sklearn.metrics import r2_score
 from datetime import datetime
 import re
 import os
 
 class DataFetcher:
     def __init__(self):
-        options = webdriver.ChromeOptions()
-        options.binary_location = os.environ.get("GOOGLE_CHROME_BINARY")
-        options.add_argument('--headless')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--no-sandbox')
-        executable_path=os.environ.get("CHROMEDRIVER_PATH")
+        self.options = webdriver.ChromeOptions()
+        self.options.binary_location = os.environ.get("GOOGLE_CHROME_BINARY")
+        self.options.add_argument('--headless')
+        self.options.add_argument('--disable-dev-shm-usage')
+        self.options.add_argument('--no-sandbox')
+        self.executable_path=os.environ.get("CHROMEDRIVER_PATH")
+        self.driver_wom, self.driver_g1, self.places = self.set_drivers()
+   
+    @st.cache(allow_output_mutation=True)
+    def set_drivers(self):
+        driver_wom = webdriver.Chrome(executable_path=self.executable_path, chrome_options=self.options)
+        driver_wom.get('https://www.worldometers.info/coronavirus/country/brazil/')
+        driver_wom.implicitly_wait(3)
 
-        self.driver = webdriver.Chrome(executable_path=os.environ.get("CHROMEDRIVER_PATH"), chrome_options=options)
+        driver_g1 = webdriver.Chrome(executable_path=self.executable_path, chrome_options=self.options)
+        driver_g1.get('https://especiais.g1.globo.com/bemestar/coronavirus/mapa-coronavirus/')
+        driver_g1.implicitly_wait(5)
+
+        places = [element.text for element in driver_g1.find_elements_by_class_name('places__cell')][2::]
+
+        return driver_wom, driver_g1, places
 
     def get_count_numbers(self):
-        self.driver.get('https://www.worldometers.info/coronavirus/country/brazil/')
-        count_numbers = self.driver.find_elements_by_xpath('//*[@id="maincounter-wrap"]/div')
+        count_numbers = self.driver_wom.find_elements_by_xpath('//*[@id="maincounter-wrap"]/div')
         main_counters = [element.text for element in count_numbers]
         total_cases = main_counters[0]
         total_deaths = main_counters[1]
@@ -28,9 +42,7 @@ class DataFetcher:
         return total_cases, total_deaths, total_recovers
 
     def get_daily_cases(self):
-        self.driver.get('https://www.worldometers.info/coronavirus/country/brazil/')
-        self.driver.implicitly_wait(3)
-        script = self.driver.find_element_by_xpath('/html/body/div[4]/div[2]/div[1]/div[2]/div/script')
+        script = self.driver_wom.find_element_by_xpath('/html/body/div[4]/div[2]/div[1]/div[2]/div/script')
         text = script.get_attribute('text')
         
         pattern_categories = r'(categories: \[.*\])'
@@ -56,9 +68,7 @@ class DataFetcher:
         return df_daily
 
     def get_total_cases(self):
-        self.driver.get('https://www.worldometers.info/coronavirus/country/brazil/')
-        self.driver.implicitly_wait(3)
-        script_total = self.driver.find_element_by_xpath('/html/body/div[4]/div[2]/div[1]/div[1]/div/script')
+        script_total = self.driver_wom.find_element_by_xpath('/html/body/div[4]/div[2]/div[1]/div[1]/div/script')
         text = script_total.get_attribute('text')
         
         pattern_categories = '(categories: \[.*\])'
@@ -85,9 +95,7 @@ class DataFetcher:
         return df_totalcases
 
     def get_update_time(self):
-        self.driver.get('https://especiais.g1.globo.com/bemestar/coronavirus/mapa-coronavirus/')
-        self.driver.implicitly_wait(5)
-        update_time = [element.text for element in self.driver.find_elements_by_class_name('update__text')][0]
+        update_time = [element.text for element in self.driver_g1.find_elements_by_class_name('update__text')][0]
         pattern_date = r'(\d+/\d+/\d+)'
         pattern_time = r'(\d+:\d+)'
 
@@ -97,17 +105,13 @@ class DataFetcher:
         return date[0], time[0]
 
     def get_cases_by_city(self):
-        self.driver.get('https://especiais.g1.globo.com/bemestar/coronavirus/mapa-coronavirus/')
-        self.driver.implicitly_wait(5)
-        places = [element.text for element in self.driver.find_elements_by_class_name('places__cell')][2::]
+        places = self.places
         locations = places[0::2]
         no_of_cases = places[1::2]
 
         location_cases_df = pd.DataFrame({'Cidade': locations, 'Número de casos': no_of_cases})
         location_cases_df['Número de casos'] = location_cases_df['Número de casos'].astype('int64')
-
-        location_cases_df.style.set_properties(subset=['Número de casos'], **{'width': '300px'})
-
+        
         return location_cases_df
 
     def get_cases_by_state(self):
