@@ -110,6 +110,7 @@ class DataFetcher:
         no_of_cases = places[1::2]
 
         location_cases_df = pd.DataFrame({'Cidade': locations, 'Número de casos': no_of_cases})
+        location_cases_df['Número de casos'] = location_cases_df['Número de casos'].map(lambda x: x.replace(".", ""))
         location_cases_df['Número de casos'] = location_cases_df['Número de casos'].astype('int64')
         
         return location_cases_df
