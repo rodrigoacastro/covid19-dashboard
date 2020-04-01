@@ -14,7 +14,7 @@ corona = Image.open('images/title_logo.png')
 st.image(corona) 
 
 st.write('Bem-vindo ao dashboard de acompanhamento de casos do Coronavírus no Brasil.')
-st.write('Os dados apresentados aqui são coletados a partir de um webscrapping de fontes confiáveis. A atualização dos dados acontece várias vezes ao dia. Apenas números confirmados são apresentados.')
+st.write('Os dados apresentados aqui são disponibilizados por meio de APIs públicas. Para ver as fontes, acesse o repositório do projeto no Github. A atualização dos dados acontece várias vezes ao dia. Apenas números confirmados são apresentados.')
 
 st.write('Utilize o menu ao lado para fazer a navegação.')
 
@@ -25,69 +25,82 @@ actions = ['Situação atual', 'Previsões']
 choice = st.sidebar.selectbox('Selecione uma opção', actions)
 
 with st.spinner('Buscando dados...'):
-    webscrapping = DataFetcher()
+    data = DataFetcher()
 
 st.write('________________________________')
 
+brazil_general_code, brazil_states_code, world_cases_code = data.get_apis_status_code()
 if choice == 'Situação atual':
-    date, time = webscrapping.get_update_time()
-    st.write('<i>Dados atualizados em </i>', date, ' <i>às</i> ', time, unsafe_allow_html=True)
-    st.text('')
-    st.text('')
+    if brazil_general_code == 200:
+        date, time = data.get_update_time()
+        st.write('<i>Dados atualizados em </i>', date, ' <i>às</i> ', time, unsafe_allow_html=True)
+        st.text('')
+        st.text('')
 
-    total_cases, deaths, recovers = webscrapping.get_count_numbers()
+        total_cases, deaths, recovers = data.get_main_counters()
 
-    st.write('<b>Casos totais até o momento: </b>', total_cases, unsafe_allow_html=True)
-    st.write('<b>Mortes confirmadas: </b>', deaths, unsafe_allow_html=True)
-    st.write('<b>Pessoas recuperadas: </b>', recovers, unsafe_allow_html=True)
+        st.write('<b>Casos totais até o momento: </b>', total_cases, unsafe_allow_html=True)
+        st.write('<b>Mortes confirmadas: </b>', deaths, unsafe_allow_html=True)
+        st.write('<b>Pessoas recuperadas: </b>', recovers, unsafe_allow_html=True)
+    else:
+        st.write("Dados indisponíveis no momento...")
 
-    daily_cases_df = webscrapping.get_daily_cases()
+    if world_cases_code == 200:
+        cases_df = data.get_cases_timeline()
 
-    fig_daily_cases = go.Figure(data=go.Bar(x=daily_cases_df['datetime_obj'], y=daily_cases_df['cases']))
+        fig_daily_cases = go.Figure(data=go.Bar(x=cases_df['date'], y=cases_df['daily']))
 
-    fig_daily_cases.update_layout(title={'text':'<b>Novos casos por dia</b>', 'x': 0.5, 'xanchor': 'center', 'yanchor': 'top'},
-                                yaxis_title='Novos casos confirmados',
-                                margin=dict(b=0, t=70))
+        fig_daily_cases.update_layout(title={'text':'<b>Novos casos por dia</b>', 'x': 0.5, 'xanchor': 'center', 'yanchor': 'top'},
+                                    yaxis_title='Novos casos confirmados',
+                                    margin=dict(b=0, t=70))
 
-    st.plotly_chart(fig_daily_cases, use_container_width=True)
+        st.plotly_chart(fig_daily_cases, use_container_width=True)
 
-    total_cases_df = webscrapping.get_total_cases()
+        fig_cumulative_cases = go.Figure()
+        fig_cumulative_cases.add_trace(go.Scatter(x=cases_df['date'], y=cases_df['confirmed'], 
+                                                line=dict(color='#17becf', width=5), 
+                                                mode='lines+markers', marker=dict(size=8), name='Confirmados', fill='tozeroy'))
 
-    fig_cumulative_cases = go.Figure(data=go.Scatter(x=total_cases_df['datetime_obj'], y=total_cases_df['cases'], 
-                                    line=dict(color='firebrick', width=4), 
-                                    mode='lines+markers', marker=dict(size=10)))
+        fig_cumulative_cases.add_trace(go.Scatter(x=cases_df['date'], y=cases_df['deaths'], 
+                                                line=dict(color='firebrick', width=5), 
+                                                mode='lines+markers', marker=dict(size=8), name='Mortes', fill='tozeroy'))
 
-    fig_cumulative_cases.update_layout(title={'text':'<b>Total de casos por dia</b>', 'x': 0.5, 'xanchor': 'center', 'yanchor': 'top'}, 
-                                       yaxis_title='Casos totais', 
-                                       margin=dict(t=70))
+        fig_cumulative_cases.update_layout(title={'text':'<b>Casos e mortes acumulado</b>', 'x': 0.5, 'xanchor': 'center', 'yanchor': 'top'}, 
+                                        yaxis_title='', 
+                                        margin=dict(t=70), legend_orientation='h')
 
-    st.plotly_chart(fig_cumulative_cases, use_container_width=True)
+        st.plotly_chart(fig_cumulative_cases, use_container_width=True)
+    else:
+        st.write("Dados indisponíveis no momento...")
+    
+    if brazil_states_code == 200:
+        cases_by_state, _ = data.get_state_cases()
 
-    with st.spinner('Buscando casos por localidade...'):
-        cases_by_city = webscrapping.get_cases_by_city()
+        st.text('')
+        st.header('Situação dos estados')
 
-    st.text('')
-    st.header('Distribuição de casos por localidade')
+        ### Using plotly table
+        fig_states_table = go.Figure(data=[go.Table(
+                    columnwidth = [600,600],
+                    header=dict(values=list(cases_by_state.columns),
+                    fill_color='lightblue',
+                    align='center'),
+                    cells=dict(values=[cases_by_state['Estado'], cases_by_state['Casos Confirmados'], 
+                                    cases_by_state['Mortes'], cases_by_state['Letalidade']],
+                        fill_color='lavender',
+                        align='center')
+                    )
+                ])
 
-    ### Using plotly table
-    fig_cities_table = go.Figure(data=[go.Table(
-                columnwidth = [600,600],
-                header=dict(values=list(cases_by_city.columns),
-                fill_color='lightblue',
-                align='center'),
-                cells=dict(values=[cases_by_city['Cidade'], cases_by_city['Número de casos']],
-                    fill_color='lavender',
-                    align='center')
-                )
-            ])
+        fig_states_table.update_layout(margin=dict(l=0, r=0, t=10, b=0))
 
-    fig_cities_table.update_layout(margin=dict(l=0, r=0, t=10, b=0))
+        st.plotly_chart(fig_states_table, use_container_width=True, config={'displayModeBar': False})
 
-    st.plotly_chart(fig_cities_table, use_container_width=True, config={'displayModeBar': False})
+        fig_state_cases = data.get_states_cases_plot()
 
-    fig_state_cases = webscrapping.get_states_cases_plot()
-
-    st.plotly_chart(fig_state_cases, use_container_width=True)
+        st.plotly_chart(fig_state_cases, use_container_width=True)
+    else:
+        st.write("Dados indisponíveis no momento...")
 
 if choice == 'Previsões':
 
@@ -105,13 +118,13 @@ if choice == 'Previsões':
 
         model = Models()
         cases_last_20days, predictions, r2 = model.get_exponential_predictions()
-        cases_df = webscrapping.get_total_cases()
+        cases_df = data.get_cases_timeline()
 
         # Quality of last 10 days fitting to exponential model plot
         fig_quality = go.Figure()
-        fig_quality.add_trace(go.Scatter(x=cases_last_20days['datetime_obj'], y=cases_last_20days['log_cases'], line=dict(color='firebrick', width=4),
+        fig_quality.add_trace(go.Scatter(x=cases_last_20days['date'], y=cases_last_20days['log_cases'], line=dict(color='firebrick', width=4),
                         mode='lines+markers', marker=dict(size=10), name='Real'))
-        fig_quality.add_trace(go.Scatter(x=cases_last_20days['datetime_obj'], y=np.log(predictions['pred_cases']), name='Ajustado'))
+        fig_quality.add_trace(go.Scatter(x=cases_last_20days['date'], y=np.log(predictions['pred_cases']), name='Ajustado'))
 
         fig_quality.update_layout(title={'text': '<b>Qualidade do ajuste exponencial em janela de 20 dias</b><br>(R² = {})'.format(r2), 'x': 0.5, 'xanchor': 'center'},
                                   yaxis_title='log (casos totais)', legend=dict(x=.1, y=0.9))
@@ -120,7 +133,7 @@ if choice == 'Previsões':
 
         # Number of cases with predictions plot 
         fig_pred = go.Figure()
-        fig_pred.add_trace(go.Scatter(x=cases_df['datetime_obj'], y=cases_df['cases'], line=dict(color='#7f7f7f', width=4),
+        fig_pred.add_trace(go.Scatter(x=cases_df['date'], y=cases_df['confirmed'], line=dict(color='#7f7f7f', width=4),
                         mode='lines+markers', marker=dict(size=10), name='Dados'))
         fig_pred.add_trace(go.Scatter(x=predictions['date'], y=predictions['pred_cases'], name='Ajuste', line=dict(color='red')))
 
@@ -140,7 +153,7 @@ if choice == 'Previsões':
         polinomial_predictions = model.get_polinomial_predictions()
 
         fig_pred_poli = go.Figure()
-        fig_pred_poli.add_trace(go.Scatter(x=cases_df['datetime_obj'], y=cases_df['cases'], line=dict(color='#7f7f7f', width=4),
+        fig_pred_poli.add_trace(go.Scatter(x=cases_df['date'], y=cases_df['confirmed'], line=dict(color='#7f7f7f', width=4),
                         mode='lines+markers', marker=dict(size=10), name='Dados'))
         fig_pred_poli.add_trace(go.Scatter(x=polinomial_predictions['date'], y=polinomial_predictions['pred_cases'], name='Ajuste', line=dict(color='green')))
 
@@ -156,7 +169,7 @@ if choice == 'Previsões':
         st.write('Em desenvolvimento...')
 
     if model == 'SEIR (Simulação)':
-        total_cases, deaths, recovers = webscrapping.get_count_numbers()
+        total_cases, deaths, recovers = data.get_main_counters()
         st.markdown('## Modelo SEIR')
         st.write(
         '''
@@ -197,8 +210,7 @@ if choice == 'Previsões':
 
         A seguir é possível verificar os resultados da simulação para o cenário brasileiro, partindo de hoje e considerando os números mais recentes. 
         ''')
-        seir_model = SeirModel(100, int(total_cases.replace(',', '')), 
-                               recovered=(int(deaths.replace(',','')) + int(recovers.replace(',',''))), p=1)
+        seir_model = SeirModel(100, total_cases, recovered=deaths+recovers, p=1)
         S, E, I, R = seir_model.get_model_results()
         population = seir_model.N
         
@@ -245,8 +257,7 @@ if choice == 'Previsões':
         ''')
 
         p = st.slider(label='Selecione o valor de p', min_value=0.5, max_value=1.0, value=1.0, step=0.01)
-        seir_model_varying = SeirModel(250, int(total_cases.replace(',', '')), 
-                                       recovered=(int(deaths.replace(',','')) + int(recovers.replace(',',''))), p=p)
+        seir_model_varying = SeirModel(250, total_cases, recovered=deaths+recovers, p=p)
         S, E, I, R = seir_model_varying.get_model_results()
 
         # Prepare dates for plotting

@@ -1,129 +1,77 @@
-from selenium import webdriver
 import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from sklearn.metrics import r2_score
 from datetime import datetime
-import re
-import os
+import requests
 
 class DataFetcher:
     def __init__(self):
-        self.options = webdriver.ChromeOptions()
-        self.options.binary_location = os.environ.get("GOOGLE_CHROME_BINARY")
-        self.options.add_argument('--headless')
-        self.options.add_argument('--disable-dev-shm-usage')
-        self.options.add_argument('--no-sandbox')
-        self.executable_path=os.environ.get("CHROMEDRIVER_PATH")
-        self.driver_wom, self.driver_g1, self.places = self.set_drivers()
-   
-    @st.cache(allow_output_mutation=True)
-    def set_drivers(self):
-        driver_wom = webdriver.Chrome(executable_path=self.executable_path, chrome_options=self.options)
-        driver_wom.get('https://www.worldometers.info/coronavirus/country/brazil/')
-        driver_wom.implicitly_wait(3)
-
-        driver_g1 = webdriver.Chrome(executable_path=self.executable_path, chrome_options=self.options)
-        driver_g1.get('https://especiais.g1.globo.com/bemestar/coronavirus/mapa-coronavirus/')
-        driver_g1.implicitly_wait(5)
-
-        places = [element.text for element in driver_g1.find_elements_by_class_name('places__cell')][2::]
-
-        return driver_wom, driver_g1, places
-
-    def get_count_numbers(self):
-        count_numbers = self.driver_wom.find_elements_by_xpath('//*[@id="maincounter-wrap"]/div')
-        main_counters = [element.text for element in count_numbers]
-        total_cases = main_counters[0]
-        total_deaths = main_counters[1]
-        total_recovers = main_counters[2]
+        self.url_brazil_general = 'https://covid19-brazil-api.now.sh/api/report/v1/brazil/'
+        self.url_brazil_states = 'https://covid19-brazil-api.now.sh/api/report/v1'
+        self.url_world_cases = 'https://pomber.github.io/covid19/timeseries.json'
         
-        return total_cases, total_deaths, total_recovers
-
-    def get_daily_cases(self):
-        script = self.driver_wom.find_element_by_xpath('/html/body/div[4]/div[2]/div[1]/div[2]/div/script')
-        text = script.get_attribute('text')
+        self.brazil_general_json = requests.get(self.url_brazil_general).json()
+        self.brazil_states_json = requests.get(self.url_brazil_states).json()
+        self.world_cases_json = requests.get(self.url_world_cases).json()
         
-        pattern_categories = r'(categories: \[.*\])'
-        pattern_days = r'(\".*\")'
-        pattern_data = r'(data: \[.*\])'
-
-        days_list = re.findall(pattern_categories, text)[0]
-        days = re.findall(pattern_days, days_list)
-
-        date_list = days[0].split(",")
+    def get_apis_status_code(self):
+        brazil_general = requests.get(self.url_brazil_general).status_code
+        brazil_states = requests.get(self.url_brazil_states).status_code
+        world_cases = requests.get(self.url_world_cases).status_code
         
-        data = re.findall(pattern_data, text)[0]
-
-        list_daily_cases = data[7:][:-11].split(",")
-        df_daily = pd.DataFrame({'date': date_list, 'cases': list_daily_cases})
-        df_daily = df_daily.applymap(lambda x: x.replace('"', ''))
-        df_daily['cases'] = df_daily['cases'].replace('null', 0)
-        df_daily['cases'] = df_daily['cases'].astype('int64')
-        if 'Feb 29' in df_daily['date'].values:
-            df_daily = df_daily[df_daily['date'] != 'Feb 29']
-        df_daily['datetime_obj'] = [datetime.strptime(x, '%b %d').replace(year=2020) for x in df_daily['date']]
+        return brazil_general, brazil_states, world_cases
+    
+    def get_main_counters(self):
+        brazil_counters = self.brazil_general_json
+        confirmed = brazil_counters['data']['confirmed']
+        deaths = brazil_counters['data']['deaths']
+        recovered = brazil_counters['data']['recovered']
         
-        return df_daily
-
-    def get_total_cases(self):
-        script_total = self.driver_wom.find_element_by_xpath('/html/body/div[4]/div[2]/div[1]/div[1]/div/script')
-        text = script_total.get_attribute('text')
-        
-        pattern_categories = '(categories: \[.*\])'
-        pattern_days = r'(\".*\")'
-        pattern_data = r'(data: \[.*\])'
-        
-        days_list = re.findall(pattern_categories, text)[0]
-        days = re.findall(pattern_days, days_list)
-        date_list = days[0].split(",")
-        
-        data = re.findall(pattern_data, text)[0]
-
-        list_total_cases = data[7:][:-11].split(",")
-        
-        df_totalcases = pd.DataFrame({'date': date_list, 'cases': list_total_cases})
-        df_totalcases = df_totalcases.applymap(lambda x: x.replace('"', ''))
-        df_totalcases['cases'] = df_totalcases['cases'].astype('int64')
-        
-        # Drop Feb 29 to avoid bug on converting to datetime object
-        if 'Feb 29' in df_totalcases['date'].values:
-            df_totalcases = df_totalcases[df_totalcases['date'] != 'Feb 29']
-        df_totalcases['datetime_obj'] = [datetime.strptime(x, '%b %d').replace(year=2020) for x in df_totalcases['date']]
-        
-        return df_totalcases
-
+        return confirmed, deaths, recovered
+    
     def get_update_time(self):
-        update_time = [element.text for element in self.driver_g1.find_elements_by_class_name('update__text')][0]
-        pattern_date = r'(\d+/\d+/\d+)'
-        pattern_time = r'(\d+:\d+)'
-
-        date = re.findall(pattern_date, update_time)
-        time = re.findall(pattern_time, update_time)
-
-        return date[0], time[0]
-
-    def get_cases_by_city(self):
-        places = self.places
-        locations = places[0::2]
-        no_of_cases = places[1::2]
-
-        location_cases_df = pd.DataFrame({'Cidade': locations, 'Número de casos': no_of_cases})
-        location_cases_df['Número de casos'] = location_cases_df['Número de casos'].map(lambda x: x.replace(".", ""))
-        location_cases_df['Número de casos'] = location_cases_df['Número de casos'].astype('int64')
+        update_time = self.brazil_general_json['data']['updated_at']
+        update_time_brazil = pd.to_datetime(update_time) - pd.Timedelta(hours=3)
+        date = str(update_time_brazil.day) + '/' + str(update_time_brazil.month) + '/' + str(update_time_brazil.year)
+        time = str(update_time_brazil.hour) + 'hrs'
         
-        return location_cases_df
-
-    def get_cases_by_state(self):
-        state_cases = self.get_cases_by_city()
-        state_cases = state_cases[state_cases['Cidade'] != 'Não informado']
-        state_cases_sum = pd.DataFrame({'Estado': state_cases['Cidade'].map(lambda x: x[-2:]), 
-                                        'Casos': state_cases['Número de casos']})
-        state_cases_sum = state_cases_sum.groupby(by='Estado').sum().reset_index()
-        state_cases_sum.sort_values(by='Casos', ascending=False, inplace=True)
-
-        return state_cases_sum
+        return date, time
+    
+    def get_cases_timeline(self):
+        dates = []
+        confirmed = []
+        deaths = []
+        for day in self.world_cases_json['Brazil']:
+            dates.append(day['date'])
+            confirmed.append(day['confirmed'])
+            deaths.append(day['deaths'])
+            
+        cases_df = pd.DataFrame({'date': dates, 'confirmed': confirmed, 'deaths': deaths})
+        cases_df['date'] = pd.to_datetime(cases_df['date'])
+        cases_df = cases_df[cases_df['date'] >= pd.to_datetime('2020-02-15')]
+        cases_df['daily'] = cases_df['confirmed'] - cases_df['confirmed'].shift(1)
+        
+        return cases_df
+    
+    def get_state_cases(self):
+        state_name = []
+        states_sigla = []
+        cases = []
+        deaths = []
+        for state in self.brazil_states_json['data']:
+            state_name.append(state['state'])
+            states_sigla.append(state['uf'])
+            cases.append(state['cases'])
+            deaths.append(state['deaths'])
+            
+        states_table = pd.DataFrame({'Estado': state_name, 'Casos Confirmados': cases, 'Mortes': deaths})
+        states_table['Letalidade'] = np.round((states_table['Mortes'] / states_table['Casos Confirmados'])*100, 2)
+        states_table['Letalidade'] = states_table['Letalidade'].map(lambda x: str(x) + '%')
+        
+        siglas_df = pd.DataFrame({'uf': states_sigla, 'cases': cases})
+        
+        return states_table, siglas_df
 
     def get_states_cases_plot(self):
         coord_dict = {
@@ -156,19 +104,19 @@ class DataFetcher:
                     , 'TO': [-10.25, -48.25]
                     }
 
-        cases_state = self.get_cases_by_state()
+        _, siglas_df = self.get_state_cases()
         list_states = [state for state in coord_dict.keys()]
         lat_coords = [coord[0] for coord in coord_dict.values()]
         long_coords = [coord[1] for coord in coord_dict.values()]
         coord_df = pd.DataFrame({'state': list_states, 'lat': lat_coords, 'long': long_coords})
-        coord_states_cases = pd.merge(coord_df, cases_state, how='inner', left_on='state', right_on='Estado')
-        coord_states_cases['hover_text'] = coord_states_cases.apply(lambda row: row.state + ': ' + str(row.Casos), axis=1)
+        coord_states_cases = pd.merge(coord_df, siglas_df, how='inner', left_on='state', right_on='uf')
+        coord_states_cases['hover_text'] = coord_states_cases.apply(lambda row: row.state + ': ' + str(row.cases), axis=1)
 
         api_key = 'pk.eyJ1IjoiYWxleG1hZ25vIiwiYSI6ImNrODU5d2pveDA0b28zaW95a2p6cHhydnAifQ.YiOEJwtD28loQ2d4txK6dg'
 
         fig = go.Figure(go.Scattermapbox(lat=coord_states_cases['lat'], lon=coord_states_cases['long'],
                                          mode='markers', 
-                                         marker=go.scattermapbox.Marker(size=coord_states_cases['Casos']/10), 
+                                         marker=go.scattermapbox.Marker(size=coord_states_cases['cases']/30), 
                                          text=coord_states_cases['hover_text'], 
                                          hoverinfo='text')
                                          )

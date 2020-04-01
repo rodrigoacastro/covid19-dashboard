@@ -28,5 +28,11 @@ In the project folder, run:
 streamlit run index.py
 ```
 
+### Credits
+
+The data used in this project comes from two public APIs that deserve its credits:
+For cases in brazilian states: https://covid19-brazil-api-docs.now.sh/
+For globally cases: https://github.com/pomber/covid19
+
 
 
