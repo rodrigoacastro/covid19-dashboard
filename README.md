@@ -21,7 +21,7 @@ After that, you can install the dependencies with:
 pip install -r requirements.txt
 ```
 
-### Runing the aplication
+### Running the aplication
 
 In the project folder, run:
 ```
